@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Coptic&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 45% 12%;
+    --foreground: 45 80% 60%;
+    --card: 220 45% 15%;
+    --card-foreground: 45 80% 60%;
+    --popover: 220 45% 15%;
+    --popover-foreground: 45 80% 60%;
+    --primary: 45 80% 55%;
+    --primary-foreground: 220 45% 10%;
+    --secondary: 220 40% 20%;
+    --secondary-foreground: 45 80% 60%;
+    --muted: 220 40% 20%;
+    --muted-foreground: 45 40% 50%;
+    --accent: 45 90% 50%;
+    --accent-foreground: 220 45% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 45 60% 40%;
+    --input: 220 40% 20%;
+    --ring: 45 90% 50%;
+    --radius: 0.5rem;
+    
+    /* Custom colors */
+    --navy-deep: #0a1628;
+    --navy-royal: #0f1f3a;
+    --navy-light: #1a3050;
+    --gold-bright: #d4af37;
+    --gold-pale: #f4e4bc;
+    --gold-deep: #b8941f;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply antialiased;
+    background: linear-gradient(135deg, #0a1628 0%, #0f1f3a 50%, #0a1628 100%);
+    color: #f4e4bc;
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  
+  h1, h2, h3, h4, h5, h6, .font-serif {
+    font-family: 'Bodoni Moda', Georgia, serif;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .text-gold {
+    color: #d4af37;
+  }
+  
+  .text-gold-pale {
+    color: #f4e4bc;
+  }
+  
+  .bg-navy-deep {
+    background-color: #0a1628;
+  }
+  
+  .bg-navy-royal {
+    background-color: #0f1f3a;
+  }
+  
+  .bg-navy-light {
+    background-color: #1a3050;
+  }
+  
+  .border-gold {
+    border-color: #d4af37;
+  }
+  
+  .shadow-gold {
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a1628;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4af3760;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d4af3790;
+}
+
+/* Selection color */
+::selection {
+  background: #d4af3740;
+  color: #f4e4bc;
+}
+
+/* Focus visible styles */
+*:focus-visible {
+  outline: 2px solid #d4af37;
+  outline-offset: 2px;
+}
+
+/* Textarea specific styles */
+textarea {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+textarea::placeholder {
+  font-family: 'Noto Sans Coptic', 'Inter', sans-serif;
+}
+
+/* Smooth transitions for interactive elements */
+button, a, input, textarea {
+  transition: all 0.2s ease;
+}
+
+/* Malay pattern animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(2deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 60s linear infinite;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

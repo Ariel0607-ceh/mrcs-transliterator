@@ -8,6 +8,66 @@ let useHighClassCoptic = true;
 // Global flag to track if the Coptic number explanation message has been shown
 let copticNumberMessageShown = false;
 
+// Custom dictionary that can be modified by users
+let customDictionary: Record<string, string> = {};
+
+// Load custom dictionary from localStorage
+export function loadCustomDictionary(): void {
+  const saved = localStorage.getItem('mrcs-custom-dictionary');
+  if (saved) {
+    try {
+      customDictionary = JSON.parse(saved);
+    } catch {
+      customDictionary = {};
+    }
+  }
+}
+
+// Save custom dictionary to localStorage
+export function saveCustomDictionary(): void {
+  localStorage.setItem('mrcs-custom-dictionary', JSON.stringify(customDictionary));
+}
+
+// Add entry to custom dictionary
+export function addDictionaryEntry(key: string, value: string): { success: boolean; message: string } {
+  // Check for empty inputs
+  if (!key.trim() || !value.trim()) {
+    return { success: false, message: 'Both word and transliteration are required' };
+  }
+
+  // Check for duplicates in custom dictionary
+  if (key in customDictionary) {
+    return { success: false, message: `Entry "${key}" already exists in dictionary` };
+  }
+
+  // Check for duplicates in built-in dictionary
+  const builtInDict = getBuiltInDictionary();
+  if (key in builtInDict) {
+    return { success: false, message: `Entry "${key}" already exists in built-in dictionary` };
+  }
+
+  // Add entry
+  customDictionary[key] = value;
+  saveCustomDictionary();
+  return { success: true, message: `Entry "${key}" added successfully` };
+}
+
+// Remove entry from custom dictionary
+export function removeDictionaryEntry(key: string): void {
+  delete customDictionary[key];
+  saveCustomDictionary();
+}
+
+// Get all dictionary entries (built-in + custom)
+export function getAllDictionaryEntries(): Record<string, string> {
+  return { ...getBuiltInDictionary(), ...customDictionary };
+}
+
+// Get only custom dictionary entries
+export function getCustomDictionaryEntries(): Record<string, string> {
+  return { ...customDictionary };
+}
+
 // Function to get the current mode
 export function getMode(): boolean {
   return useHighClassCoptic;
@@ -314,12 +374,17 @@ const melayuToRcs: Record<string, string> = {
   Th: 'Ϯ'
 };
 
-// Dictionary of words with direct transliteration (EXACT from Python)
-const dictionary: Record<string, string> = {
+// Built-in dictionary of words with direct transliteration (EXACT from Python)
+const builtInDictionary: Record<string, string> = {
   sangha: 'ⲥⲁⲛⲅϩⲁ',
   Sangha: 'Ⲥⲁⲛⲅϩⲁ',
   SANGHA: 'ⲤⲀⲚⲄϨⲀ'
 };
+
+// Get built-in dictionary
+function getBuiltInDictionary(): Record<string, string> {
+  return { ...builtInDictionary };
+}
 
 // Function to transliterate a single word (EXACT logic from Python)
 export function transliterateWord(word: string): { result: string; showNumberMessage: boolean } {
@@ -332,9 +397,14 @@ export function transliterateWord(word: string): { result: string; showNumberMes
     return { result, showNumberMessage: showMessage };
   }
 
-  // Check dictionary for direct transliteration
-  if (cleanedWord in dictionary) {
-    return { result: dictionary[cleanedWord], showNumberMessage: false };
+  // Check custom dictionary FIRST (user entries take priority)
+  if (cleanedWord in customDictionary) {
+    return { result: customDictionary[cleanedWord], showNumberMessage: false };
+  }
+
+  // Check built-in dictionary for direct transliteration
+  if (cleanedWord in builtInDictionary) {
+    return { result: builtInDictionary[cleanedWord], showNumberMessage: false };
   }
 
   let transliterated = '';
@@ -427,7 +497,10 @@ export function getMultiCharMapping(): Array<{ key: string; value: string }> {
     .map(([key, value]) => ({ key, value }));
 }
 
-// Get the dictionary entries
+// Get all dictionary entries (built-in + custom)
 export function getDictionaryEntries(): Array<{ key: string; value: string }> {
-  return Object.entries(dictionary).map(([key, value]) => ({ key, value }));
+  return Object.entries(getAllDictionaryEntries()).map(([key, value]) => ({ key, value }));
 }
+
+// Initialize - load custom dictionary on module load
+loadCustomDictionary();

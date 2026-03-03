@@ -7,10 +7,15 @@ import {
   transliterateSentence,
   getKeyMapping,
   getMultiCharMapping,
-  getDictionaryEntries
+  getDictionaryEntries,
+  getCustomDictionaryEntries,
+  addDictionaryEntry,
+  removeDictionaryEntry,
+  loadCustomDictionary
 } from './lib/transliterator';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import {
   Copy,
   Bookmark,
@@ -21,7 +26,13 @@ import {
   Check,
   History,
   Sparkles,
-  Moon
+  Moon,
+  Plus,
+  Home,
+  Type,
+  AlignLeft,
+  Keyboard,
+  ScrollText
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,49 +46,6 @@ interface HistoryItem {
   output: string;
   timestamp: number;
 }
-
-// Malay Pattern SVG Component
-const MalayPattern = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
-  <svg
-    className={className}
-    style={style}
-    viewBox="0 0 100 100"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M50 5L55 20L70 15L60 30L75 40L55 45L50 60L45 45L25 40L40 30L30 15L45 20L50 5Z"
-      stroke="currentColor"
-      strokeWidth="1"
-      fill="none"
-    />
-    <circle cx="50" cy="50" r="8" stroke="currentColor" strokeWidth="1" fill="none" />
-    <path
-      d="M50 20 Q65 35 50 50 Q35 35 50 20"
-      stroke="currentColor"
-      strokeWidth="0.5"
-      fill="none"
-    />
-    <path
-      d="M20 50 Q35 35 50 50 Q35 65 20 50"
-      stroke="currentColor"
-      strokeWidth="0.5"
-      fill="none"
-    />
-    <path
-      d="M50 80 Q35 65 50 50 Q65 65 50 80"
-      stroke="currentColor"
-      strokeWidth="0.5"
-      fill="none"
-    />
-    <path
-      d="M80 50 Q65 65 50 50 Q65 35 80 50"
-      stroke="currentColor"
-      strokeWidth="0.5"
-      fill="none"
-    />
-  </svg>
-);
 
 // Coptic Cross SVG Component
 const CopticCross = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -133,6 +101,41 @@ const AnkhSymbol = ({ className, style }: { className?: string; style?: React.CS
   </svg>
 );
 
+// Section Navigation Component
+const SectionNav = ({ activeSection, onNavigate }: { activeSection: string; onNavigate: (section: string) => void }) => {
+  const sections = [
+    { id: 'hero', label: 'Home', icon: Home },
+    { id: 'input', label: 'Input', icon: Type },
+    { id: 'output', label: 'Output', icon: AlignLeft },
+    { id: 'history', label: 'History', icon: History },
+    { id: 'dictionary', label: 'Dictionary', icon: BookOpen },
+  ];
+
+  return (
+    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+      <div className="flex items-center gap-1 px-2 py-2 bg-[#0f1f3a]/95 backdrop-blur-md rounded-full border border-[#d4af37]/30 shadow-xl">
+        {sections.map((section) => {
+          const Icon = section.icon;
+          return (
+            <button
+              key={section.id}
+              onClick={() => onNavigate(section.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-200 ${
+                activeSection === section.id
+                  ? 'bg-[#d4af37] text-[#0a1628]'
+                  : 'text-[#f4e4bc]/70 hover:text-[#f4e4bc] hover:bg-[#d4af37]/10'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="text-sm font-medium hidden sm:inline">{section.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+};
+
 function App() {
   // State
   const [mode, setModeState] = useState<'high' | 'low'>('high');
@@ -142,16 +145,23 @@ function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showKeyMap, setShowKeyMap] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeSection, setActiveSection] = useState('hero');
+  
+  // Dictionary state
+  const [customDict, setCustomDict] = useState<Record<string, string>>({});
+  const [newDictKey, setNewDictKey] = useState('');
+  const [newDictValue, setNewDictValue] = useState('');
+  const [showAddDict, setShowAddDict] = useState(false);
 
-  // Refs for animations
+  // Refs for animations and navigation
   const heroRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const historySectionRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
+  const dictSectionRef = useRef<HTMLDivElement>(null);
   const outputScrollRef = useRef<HTMLDivElement>(null);
 
-  // Load history from localStorage on mount
+  // Load history and dictionary from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('mrcs-history');
     if (saved) {
@@ -161,12 +171,59 @@ function App() {
         setHistory([]);
       }
     }
+    loadCustomDictionary();
+    setCustomDict(getCustomDictionaryEntries());
   }, []);
 
   // Save history to localStorage
   useEffect(() => {
     localStorage.setItem('mrcs-history', JSON.stringify(history));
   }, [history]);
+
+  // Track active section on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const windowHeight = window.innerHeight;
+      
+      const sections: Array<{ id: string; ref: React.RefObject<HTMLDivElement | null> }> = [
+        { id: 'hero', ref: heroRef },
+        { id: 'input', ref: inputRef },
+        { id: 'output', ref: outputRef },
+        { id: 'history', ref: historySectionRef },
+        { id: 'dictionary', ref: dictSectionRef },
+      ];
+
+      for (const section of sections) {
+        const el = section.ref.current;
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= windowHeight / 2 && rect.bottom >= windowHeight / 2) {
+            setActiveSection(section.id);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Navigation handler
+  const handleNavigate = (sectionId: string) => {
+    const sectionMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
+      hero: heroRef,
+      input: inputRef,
+      output: outputRef,
+      history: historySectionRef,
+      dictionary: dictSectionRef,
+    };
+    
+    const ref = sectionMap[sectionId];
+    if (ref?.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   // Initialize GSAP animations
   useEffect(() => {
@@ -175,12 +232,12 @@ function App() {
       const heroTl = gsap.timeline();
       heroTl
         .fromTo(
-          '.pattern-bg-1',
+          '.cross-bg-1',
           { scale: 0.9, opacity: 0 },
           { scale: 1, opacity: 0.15, duration: 1.2, ease: 'power2.out' }
         )
         .fromTo(
-          '.pattern-bg-2',
+          '.ankh-bg-1',
           { scale: 0.9, opacity: 0 },
           { scale: 1, opacity: 0.12, duration: 1.2, ease: 'power2.out' },
           '<'
@@ -210,129 +267,75 @@ function App() {
           1
         );
 
-      // Hero scroll-driven exit animation
-      ScrollTrigger.create({
-        trigger: heroRef.current,
-        start: 'top top',
-        end: '+=130%',
-        pin: true,
-        scrub: 0.6,
-        onUpdate: (self) => {
-          const progress = self.progress;
-          if (progress > 0.7) {
-            const exitProgress = (progress - 0.7) / 0.3;
-            gsap.set('.hero-content', {
-              y: -18 * exitProgress + 'vh',
-              opacity: 1 - exitProgress * 0.75
-            });
-            gsap.set('.mode-card', {
-              y: -10 * exitProgress + 'vh',
-              opacity: 1 - exitProgress * 0.75
-            });
+      // Input section - simple reveal animation (NO PIN)
+      gsap.fromTo('.input-prompt',
+        { x: -50, opacity: 0 },
+        {
+          x: 0, opacity: 1, duration: 0.6,
+          scrollTrigger: {
+            trigger: inputRef.current,
+            start: 'top 70%',
+            toggleActions: 'play none none reverse'
           }
         }
-      });
-
-      // Input section scroll animation
-      ScrollTrigger.create({
-        trigger: inputRef.current,
-        start: 'top top',
-        end: '+=130%',
-        pin: true,
-        scrub: 0.6,
-        onUpdate: (self) => {
-          const progress = self.progress;
-
-          // Entrance (0-30%)
-          if (progress <= 0.3) {
-            const entranceProgress = progress / 0.3;
-            gsap.set('.input-prompt', {
-              x: -12 * (1 - entranceProgress) + 'vw',
-              opacity: entranceProgress
-            });
-            gsap.set('.input-card', {
-              y: 18 * (1 - entranceProgress) + 'vh',
-              scale: 0.98 + 0.02 * entranceProgress,
-              opacity: entranceProgress
-            });
-            gsap.set('.input-cta', {
-              y: 10 * (1 - entranceProgress) + 'vh',
-              opacity: entranceProgress
-            });
-          }
-          // Settle (30-70%)
-          else if (progress <= 0.7) {
-            gsap.set('.input-prompt', { x: 0, opacity: 1 });
-            gsap.set('.input-card', { y: 0, scale: 1, opacity: 1 });
-            gsap.set('.input-cta', { y: 0, opacity: 1 });
-          }
-          // Exit (70-100%)
-          else {
-            const exitProgress = (progress - 0.7) / 0.3;
-            gsap.set('.input-card', {
-              x: -18 * exitProgress + 'vw',
-              opacity: 1 - exitProgress * 0.75
-            });
-            gsap.set('.input-cta', {
-              y: 8 * exitProgress + 'vh',
-              opacity: 1 - exitProgress * 0.75
-            });
-            gsap.set('.input-prompt', {
-              opacity: Math.max(0.3, 1 - exitProgress * 0.7)
-            });
+      );
+      gsap.fromTo('.input-card',
+        { y: 60, opacity: 0, scale: 0.95 },
+        {
+          y: 0, opacity: 1, scale: 1, duration: 0.7,
+          scrollTrigger: {
+            trigger: inputRef.current,
+            start: 'top 65%',
+            toggleActions: 'play none none reverse'
           }
         }
-      });
-
-      // Output section scroll animation
-      ScrollTrigger.create({
-        trigger: outputRef.current,
-        start: 'top top',
-        end: '+=130%',
-        pin: true,
-        scrub: 0.6,
-        onUpdate: (self) => {
-          const progress = self.progress;
-
-          // Entrance (0-30%)
-          if (progress <= 0.3) {
-            const entranceProgress = progress / 0.3;
-            gsap.set('.output-card', {
-              x: 18 * (1 - entranceProgress) + 'vw',
-              opacity: entranceProgress
-            });
-            gsap.set('.output-label', {
-              x: -8 * (1 - entranceProgress) + 'vw',
-              opacity: entranceProgress
-            });
-            gsap.set('.output-actions', {
-              y: 10 * (1 - entranceProgress) + 'vh',
-              opacity: entranceProgress
-            });
-          }
-          // Settle (30-70%)
-          else if (progress <= 0.7) {
-            gsap.set('.output-card', { x: 0, opacity: 1 });
-            gsap.set('.output-label', { x: 0, opacity: 1 });
-            gsap.set('.output-actions', { y: 0, opacity: 1 });
-          }
-          // Exit (70-100%)
-          else {
-            const exitProgress = (progress - 0.7) / 0.3;
-            gsap.set('.output-card', {
-              y: -12 * exitProgress + 'vh',
-              opacity: 1 - exitProgress * 0.75
-            });
-            gsap.set('.output-actions', {
-              y: 8 * exitProgress + 'vh',
-              opacity: 1 - exitProgress * 0.75
-            });
-            gsap.set('.output-label', {
-              opacity: Math.max(0.3, 1 - exitProgress * 0.7)
-            });
+      );
+      gsap.fromTo('.input-cta',
+        { y: 40, opacity: 0 },
+        {
+          y: 0, opacity: 1, duration: 0.5, delay: 0.2,
+          scrollTrigger: {
+            trigger: inputRef.current,
+            start: 'top 60%',
+            toggleActions: 'play none none reverse'
           }
         }
-      });
+      );
+
+      // Output section - simple reveal animation (NO PIN)
+      gsap.fromTo('.output-label',
+        { x: -50, opacity: 0 },
+        {
+          x: 0, opacity: 1, duration: 0.6,
+          scrollTrigger: {
+            trigger: outputRef.current,
+            start: 'top 70%',
+            toggleActions: 'play none none reverse'
+          }
+        }
+      );
+      gsap.fromTo('.output-card',
+        { y: 60, opacity: 0, scale: 0.95 },
+        {
+          y: 0, opacity: 1, scale: 1, duration: 0.7,
+          scrollTrigger: {
+            trigger: outputRef.current,
+            start: 'top 65%',
+            toggleActions: 'play none none reverse'
+          }
+        }
+      );
+      gsap.fromTo('.output-actions',
+        { y: 40, opacity: 0 },
+        {
+          y: 0, opacity: 1, duration: 0.5, delay: 0.2,
+          scrollTrigger: {
+            trigger: outputRef.current,
+            start: 'top 60%',
+            toggleActions: 'play none none reverse'
+          }
+        }
+      );
 
       // History section flowing animation
       gsap.fromTo(
@@ -341,7 +344,7 @@ function App() {
         {
           y: 0,
           opacity: 1,
-          duration: 0.6,
+          duration: 0.5,
           scrollTrigger: {
             trigger: historySectionRef.current,
             start: 'top 80%',
@@ -351,16 +354,16 @@ function App() {
         }
       );
 
-      // Footer flowing animation
+      // Dictionary section flowing animation
       gsap.fromTo(
-        '.keymap-panel',
-        { y: 40, opacity: 0 },
+        '.dict-header',
+        { y: 24, opacity: 0 },
         {
           y: 0,
           opacity: 1,
-          duration: 0.6,
+          duration: 0.5,
           scrollTrigger: {
-            trigger: footerRef.current,
+            trigger: dictSectionRef.current,
             start: 'top 80%',
             end: 'top 50%',
             scrub: true
@@ -440,6 +443,27 @@ function App() {
     toast.success('Copied to clipboard!');
   };
 
+  // Handle add dictionary entry
+  const handleAddDictEntry = () => {
+    const result = addDictionaryEntry(newDictKey, newDictValue);
+    if (result.success) {
+      toast.success(result.message);
+      setNewDictKey('');
+      setNewDictValue('');
+      setShowAddDict(false);
+      setCustomDict(getCustomDictionaryEntries());
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  // Handle delete dictionary entry
+  const handleDeleteDictEntry = (key: string) => {
+    removeDictionaryEntry(key);
+    setCustomDict(getCustomDictionaryEntries());
+    toast.success(`Entry "${key}" removed`);
+  };
+
   // Keyboard shortcut
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -448,6 +472,7 @@ function App() {
       }
       if (e.key === 'Escape') {
         setShowKeyMap(false);
+        setShowAddDict(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -456,19 +481,19 @@ function App() {
 
   const keyMapping = getKeyMapping();
   const multiCharMapping = getMultiCharMapping();
-  const dictionaryEntries = getDictionaryEntries();
+  const allDictEntries = getDictionaryEntries();
 
   return (
-    <div className="min-h-screen text-[#f4e4bc] font-sans overflow-x-hidden relative">
+    <div className="min-h-screen text-[#f4e4bc] font-sans overflow-x-hidden relative pb-24">
       {/* Base gradient background */}
       <div className="fixed inset-0 bg-gradient-to-br from-[#0a1628] via-[#0f1f3a] to-[#0a1628]" />
       
       {/* Background Symbols - Crescent Moon, Cross, and Ankh */}
-      {/* Large Cross - Top Right */}
-      <CopticCross className="pattern-bg-1 fixed -right-24 -top-24 w-[450px] h-[450px] text-[#d4af37] opacity-0 animate-pulse-glow pointer-events-none" />
+      {/* Large Cross - Top Right with pulse glow */}
+      <CopticCross className="cross-bg-1 fixed -right-24 -top-24 w-[450px] h-[450px] text-[#d4af37] opacity-0 animate-pulse-glow pointer-events-none" />
       
-      {/* Large Ankh - Bottom Left */}
-      <AnkhSymbol className="pattern-bg-2 fixed -left-20 -bottom-20 w-[400px] h-[400px] text-[#d4af37] opacity-0 animate-float pointer-events-none" />
+      {/* Large Ankh - Bottom Left with SAME pulse glow */}
+      <AnkhSymbol className="ankh-bg-1 fixed -left-20 -bottom-20 w-[400px] h-[400px] text-[#d4af37] opacity-0 animate-pulse-glow pointer-events-none" />
       
       {/* Crescent Moons - Distributed */}
       <Moon className="fixed left-[8%] top-[18%] w-16 h-16 text-[#d4af37] opacity-15 animate-float pointer-events-none" />
@@ -508,15 +533,19 @@ function App() {
           onClick={() => setShowKeyMap(true)}
           className="flex items-center gap-2 px-4 py-2 bg-[#1a3050]/80 backdrop-blur-sm rounded-md border border-[#d4af37]/30 hover:border-[#d4af37] hover:bg-[#1a3050] transition-all"
         >
-          <BookOpen className="w-4 h-4 text-[#d4af37]" />
+          <Keyboard className="w-4 h-4 text-[#d4af37]" />
           <span className="text-sm font-medium text-[#f4e4bc]">Key Map</span>
         </button>
       </header>
 
+      {/* Section Navigation */}
+      <SectionNav activeSection={activeSection} onNavigate={handleNavigate} />
+
       {/* Section 1: Hero + Mode Switch */}
       <section
         ref={heroRef}
-        className="relative h-screen w-full flex items-center justify-center overflow-hidden"
+        id="hero"
+        className="relative min-h-screen w-full flex items-center justify-center overflow-hidden pt-20 pb-24"
         style={{ zIndex: 10 }}
       >
         <div className="hero-content relative z-10 text-center px-4">
@@ -563,7 +592,7 @@ function App() {
           </div>
         </div>
 
-        <div className="scroll-hint absolute bottom-8 left-1/2 -translate-x-1/2 text-sm text-[#f4e4bc]/60 flex items-center gap-2">
+        <div className="scroll-hint absolute bottom-24 left-1/2 -translate-x-1/2 text-sm text-[#f4e4bc]/60 flex items-center gap-2">
           <span>Scroll to begin</span>
           <div className="w-4 h-4 border-b-2 border-r-2 border-[#d4af37] rotate-45 animate-bounce" />
         </div>
@@ -572,7 +601,8 @@ function App() {
       {/* Section 2: Transliterator Input */}
       <section
         ref={inputRef}
-        className="relative h-screen w-full flex items-center justify-center overflow-hidden"
+        id="input"
+        className="relative min-h-screen w-full flex items-center justify-center overflow-hidden py-20"
         style={{ zIndex: 20 }}
       >
         <div className="w-full max-w-5xl mx-auto px-4">
@@ -592,7 +622,7 @@ function App() {
 
           {/* Prompt */}
           <p className="input-prompt text-lg text-[#f4e4bc]/70 mb-4 flex items-center gap-2">
-            <MalayPattern className="w-5 h-5 text-[#d4af37]" />
+            <Type className="w-5 h-5 text-[#d4af37]" />
             Type in Malay
           </p>
 
@@ -628,7 +658,8 @@ function App() {
       {/* Section 3: Result + Copy */}
       <section
         ref={outputRef}
-        className="relative h-screen w-full flex items-center justify-center overflow-hidden"
+        id="output"
+        className="relative min-h-screen w-full flex items-center justify-center overflow-hidden py-20"
         style={{ zIndex: 30 }}
       >
         <div className="w-full max-w-5xl mx-auto px-4">
@@ -648,7 +679,7 @@ function App() {
 
           {/* Label */}
           <p className="output-label text-lg text-[#f4e4bc]/70 mb-4 flex items-center gap-2">
-            <AnkhSymbol className="w-5 h-5 text-[#d4af37]" />
+            <AlignLeft className="w-5 h-5 text-[#d4af37]" />
             Coptic output
           </p>
 
@@ -717,7 +748,8 @@ function App() {
       {/* Section 4: History */}
       <section
         ref={historySectionRef}
-        className="relative py-20 px-4"
+        id="history"
+        className="relative py-20 px-4 min-h-screen"
         style={{ zIndex: 40 }}
       >
         <div className="max-w-5xl mx-auto">
@@ -803,91 +835,121 @@ function App() {
         </div>
       </section>
 
-      {/* Section 5: Footer / Key Map */}
-      <footer ref={footerRef} className="relative py-20 px-4 bg-[#0a1628] border-t border-[#d4af37]/20" style={{ zIndex: 50 }}>
-        {/* Decorative patterns */}
-        <MalayPattern className="absolute top-10 left-10 w-24 h-24 text-[#d4af37] opacity-10" />
-        <CopticCross className="absolute top-10 right-10 w-20 h-20 text-[#d4af37] opacity-10" />
-        
-        <div className="max-w-4xl mx-auto relative">
-          <div className="keymap-panel bg-[#0f1f3a] rounded-lg p-8 mb-12 border-2 border-[#d4af37]/30">
-            <div className="flex items-center gap-3 mb-2">
-              <BookOpen className="w-6 h-6 text-[#d4af37]" />
-              <h2 className="font-serif text-3xl font-semibold text-[#d4af37]">Key Map</h2>
-            </div>
-            <p className="text-[#f4e4bc]/60 mb-6">Malay letters → Coptic symbols</p>
-
-            {/* Single character mappings */}
-            <div className="mb-8">
-              <h3 className="text-sm font-medium text-[#d4af37] mb-3 uppercase tracking-wider">
-                Single Characters
-              </h3>
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
-                {keyMapping.map(({ key, value }) => (
-                  <div
-                    key={key}
-                    className="flex flex-col items-center p-3 bg-[#0a1628] rounded-md border border-[#d4af37]/20 hover:border-[#d4af37]/50 transition-colors"
-                  >
-                    <span className="text-lg font-medium text-[#f4e4bc]">{key}</span>
-                    <span className="text-xl text-[#d4af37]" style={{ fontFamily: "'Noto Sans Coptic', sans-serif" }}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
+      {/* Section 5: Dictionary */}
+      <section
+        ref={dictSectionRef}
+        id="dictionary"
+        className="relative py-20 px-4 min-h-screen"
+        style={{ zIndex: 50 }}
+      >
+        <div className="max-w-5xl mx-auto">
+          <div className="dict-header flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+            <div className="flex items-center gap-3">
+              <ScrollText className="w-8 h-8 text-[#d4af37]" />
+              <div>
+                <h2 className="font-serif text-4xl md:text-5xl font-semibold mb-2 text-[#d4af37]">
+                  Dictionary
+                </h2>
+                <div className="w-24 h-0.5 bg-gradient-to-r from-[#d4af37] to-transparent" />
               </div>
             </div>
-
-            {/* Multi-character mappings */}
-            <div className="mb-8">
-              <h3 className="text-sm font-medium text-[#d4af37] mb-3 uppercase tracking-wider">
-                Multi-Character (High-Class only)
-              </h3>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {multiCharMapping.map(({ key, value }) => (
-                  <div
-                    key={key}
-                    className="flex flex-col items-center p-3 bg-[#0a1628] rounded-md border border-[#d4af37]/20 hover:border-[#d4af37]/50 transition-colors"
-                  >
-                    <span className="text-lg font-medium text-[#f4e4bc]">{key}</span>
-                    <span className="text-xl text-[#d4af37]" style={{ fontFamily: "'Noto Sans Coptic', sans-serif" }}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Dictionary entries */}
-            <div>
-              <h3 className="text-sm font-medium text-[#d4af37] mb-3 uppercase tracking-wider">
-                Special Dictionary Entries
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {dictionaryEntries.map(({ key, value }) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between p-3 bg-[#0a1628] rounded-md border border-[#d4af37]/20 hover:border-[#d4af37]/50 transition-colors"
-                  >
-                    <span className="text-lg font-medium text-[#f4e4bc]">{key}</span>
-                    <span className="text-xl text-[#d4af37]" style={{ fontFamily: "'Noto Sans Coptic', sans-serif" }}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <button
+              onClick={() => setShowAddDict(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d4af37] text-[#0a1628] rounded-md font-medium hover:bg-[#f4e4bc] transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Entry
+            </button>
           </div>
 
-          <div className="text-center text-sm text-[#f4e4bc]/40">
-            <p className="flex items-center justify-center gap-2">
-              <MalayPattern className="w-4 h-4 text-[#d4af37]" />
-              Built with React + GSAP + Tailwind CSS
-              <CopticCross className="w-4 h-4 text-[#d4af37]" />
-            </p>
-            <p className="mt-2 text-[#d4af37]">MRCS Transliterator Pro</p>
+          {/* Add Entry Form */}
+          {showAddDict && (
+            <div className="mb-8 bg-[#0f1f3a]/80 backdrop-blur-sm rounded-lg border border-[#d4af37]/30 p-6">
+              <h3 className="text-lg font-medium text-[#d4af37] mb-4">Add New Dictionary Entry</h3>
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="text-sm text-[#f4e4bc]/60 mb-2 block">Malay Word</label>
+                  <Input
+                    value={newDictKey}
+                    onChange={(e) => setNewDictKey(e.target.value)}
+                    placeholder="e.g., selamat"
+                    className="bg-[#0a1628] border-[#d4af37]/30 text-[#f4e4bc] placeholder:text-[#f4e4bc]/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-[#f4e4bc]/60 mb-2 block">Coptic Transliteration</label>
+                  <Input
+                    value={newDictValue}
+                    onChange={(e) => setNewDictValue(e.target.value)}
+                    placeholder="e.g., ⲥⲉⲗⲁⲙⲁⲧ"
+                    className="bg-[#0a1628] border-[#d4af37]/30 text-[#d4af37] placeholder:text-[#d4af37]/30"
+                    style={{ fontFamily: "'Noto Sans Coptic', sans-serif" }}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleAddDictEntry}
+                  className="bg-[#d4af37] text-[#0a1628] hover:bg-[#f4e4bc]"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Save Entry
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowAddDict(false);
+                    setNewDictKey('');
+                    setNewDictValue('');
+                  }}
+                  variant="outline"
+                  className="border-[#d4af37]/40 text-[#f4e4bc] hover:bg-[#d4af37]/10"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Dictionary Entries */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {allDictEntries.map(({ key, value }) => {
+              const isCustom = key in customDict;
+              return (
+                <div
+                  key={key}
+                  className={`bg-[#0f1f3a]/80 backdrop-blur-sm rounded-lg border p-4 hover:shadow-lg transition-all ${
+                    isCustom ? 'border-[#d4af37]/50' : 'border-[#d4af37]/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-[#f4e4bc]/60">
+                      {isCustom ? 'Custom' : 'Built-in'}
+                    </span>
+                    {isCustom && (
+                      <button
+                        onClick={() => handleDeleteDictEntry(key)}
+                        className="p-1 hover:bg-red-500/10 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-[#f4e4bc]/40 hover:text-red-400" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg text-[#f4e4bc] font-medium">{key}</span>
+                    <span
+                      className="text-xl text-[#d4af37]"
+                      style={{ fontFamily: "'Noto Sans Coptic', sans-serif" }}
+                    >
+                      {value}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      </footer>
+      </section>
 
       {/* Key Map Slide-out Panel */}
       {showKeyMap && (
@@ -899,7 +961,7 @@ function App() {
           <div className="w-full max-w-2xl bg-[#0a1628] h-full overflow-auto shadow-2xl border-l border-[#d4af37]/30">
             <div className="sticky top-0 bg-[#0a1628] border-b border-[#d4af37]/30 p-4 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <BookOpen className="w-6 h-6 text-[#d4af37]" />
+                <Keyboard className="w-6 h-6 text-[#d4af37]" />
                 <h2 className="font-serif text-2xl font-semibold text-[#d4af37]">Key Map</h2>
               </div>
               <button
@@ -962,7 +1024,7 @@ function App() {
                   Special Dictionary Entries
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {dictionaryEntries.map(({ key, value }) => (
+                  {allDictEntries.slice(0, 6).map(({ key, value }) => (
                     <div
                       key={key}
                       className="flex items-center justify-between p-3 bg-[#0f1f3a] rounded-md border border-[#d4af37]/20"
